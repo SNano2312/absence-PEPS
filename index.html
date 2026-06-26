@@ -918,13 +918,23 @@
   window.approveAbsence = async function(id){
     const validateur = localStorage.getItem('peps_validateur') || '';
     if(!validateur.trim()){ alert("Merci de renseigner votre nom dans le champ « Validateur » avant de valider."); return; }
-    await U.updateRow('Absences_PEPS', id, {statut:'Approuvé', valideur, date_validation: U.nowEpoch()});
-    await loadAll(); renderValidation();
+    try{
+      await U.updateRow('Absences_PEPS', id, {statut:'Approuvé', valideur, date_validation: U.nowEpoch()});
+      await loadAll(); renderValidation();
+    }catch(e){
+      console.error(e);
+      alert("Échec de l'approbation : " + (e.message||e) + "\n\nVérifiez la règle d'accès « Owner → tout autoriser » sur la table Absences_PEPS.");
+    }
   };
   window.cancelAbsence = async function(id){
     if(!confirm('Annuler cette absence déjà approuvée ?')) return;
-    await U.updateRow('Absences_PEPS', id, {statut:'Annulé'});
-    await loadAll(); renderValidation();
+    try{
+      await U.updateRow('Absences_PEPS', id, {statut:'Annulé'});
+      await loadAll(); renderValidation();
+    }catch(e){
+      console.error(e);
+      alert("Échec de l'annulation : " + (e.message||e));
+    }
   };
   window.openRejectModal = function(id){
     openModal(`
@@ -939,9 +949,14 @@
     const motif = document.getElementById('rejectMotif').value.trim();
     if(!motif){ alert('Le motif du refus est obligatoire.'); return; }
     const validateur = localStorage.getItem('peps_validateur') || '';
-    await U.updateRow('Absences_PEPS', id, {statut:'Refusé', motif_refus: motif, valideur, date_validation: U.nowEpoch()});
-    closeModal();
-    await loadAll(); renderValidation();
+    try{
+      await U.updateRow('Absences_PEPS', id, {statut:'Refusé', motif_refus: motif, valideur, date_validation: U.nowEpoch()});
+      closeModal();
+      await loadAll(); renderValidation();
+    }catch(e){
+      console.error(e);
+      alert("Échec du refus : " + (e.message||e));
+    }
   };
 
   /* =====================================================================
@@ -1066,10 +1081,15 @@
   window.changeSoldesYear = function(delta){ state.soldesYear += delta; renderSoldes(); };
   window.saveQuota = async function(pepsId, typeId, year, val){
     const num = parseFloat(val) || 0;
-    const existing = quotaFor(pepsId, typeId, year);
-    if(existing){ await U.updateRow('Quotas_PEPS', existing.id, {jours_acquis: num}); }
-    else{ await U.addRow('Quotas_PEPS', {peps_id: pepsId, type_id: typeId, annee: year, jours_acquis: num}); }
-    await loadAll(); renderSoldes();
+    try{
+      const existing = quotaFor(pepsId, typeId, year);
+      if(existing){ await U.updateRow('Quotas_PEPS', existing.id, {jours_acquis: num}); }
+      else{ await U.addRow('Quotas_PEPS', {peps_id: pepsId, type_id: typeId, annee: year, jours_acquis: num}); }
+      await loadAll(); renderSoldes();
+    }catch(e){
+      console.error(e);
+      alert("Échec de l'enregistrement du quota : " + (e.message||e));
+    }
   };
   window.exportSoldesPDF = function(){
     const table = document.getElementById('soldesTable');
@@ -1167,8 +1187,13 @@
       commentaire: document.getElementById('m_comment').value.trim()
     };
     if(!fields.nom){ alert('Le nom est obligatoire.'); return; }
-    if(id) await U.updateRow('PEPS', id, fields); else await U.addRow('PEPS', fields);
-    closeModal(); await loadAll(); renderReferentiel();
+    try{
+      if(id) await U.updateRow('PEPS', id, fields); else await U.addRow('PEPS', fields);
+      closeModal(); await loadAll(); renderReferentiel();
+    }catch(e){
+      console.error(e);
+      alert("Échec de l'enregistrement du PEPS : " + (e.message||e));
+    }
   };
   window.deletePeps = async function(id){
     const nb = state.absences.filter(a=>a.peps_id===id).length;
@@ -1227,8 +1252,13 @@
       ordre: parseInt(document.getElementById('t_ordre').value)||1
     };
     if(!fields.libelle){ alert('Le libellé est obligatoire.'); return; }
-    if(id) await U.updateRow('Types_Absence', id, fields); else await U.addRow('Types_Absence', fields);
-    closeModal(); await loadAll(); renderTypes();
+    try{
+      if(id) await U.updateRow('Types_Absence', id, fields); else await U.addRow('Types_Absence', fields);
+      closeModal(); await loadAll(); renderTypes();
+    }catch(e){
+      console.error(e);
+      alert("Échec de l'enregistrement du type : " + (e.message||e));
+    }
   };
   window.deleteType = async function(id){
     const nb = state.absences.filter(a=>a.type_id===id).length;
