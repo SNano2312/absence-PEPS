@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Absences PEPS — INRAE</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=Source+Sans+3:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  @font-face {
+    font-family: 'OpenDyslexic';
+    src: url('https://cdn.jsdelivr.net/gh/antijingoist/open-dyslexic@master/compiled-fonts/OpenDyslexic-Regular.otf') format('opentype');
+    font-display: swap;
+  }
+
+  :root{
+    --bleu: #0057A8;
+    --teal: #00A3A6;
+    --bleu-fonce: #003D78;
+    --bg: #F4F7FA;
+    --surface: #FFFFFF;
+    --surface-2: #EEF2F6;
+    --texte: #1B2630;
+    --texte-att: #5A6B7A;
+    --bordure: #D9E2EA;
+    --vert: #2E9E5B;
+    --orange: #E8A33D;
+    --rouge: #D64545;
+    --gris: #8A97A3;
+    --ombre: 0 2px 10px rgba(20,40,60,0.08);
+    --rayon: 10px;
+    --font-titre: 'Source Serif 4', Georgia, serif;
+    --font-corps: 'Source Sans 3', Arial, sans-serif;
+    --font-mono: 'DM Mono', monospace;
+  }
+
+  html[data-theme="dark"]{
+    --bg: #121A22;
+    --surface: #1B2530;
+    --surface-2: #232F3B;
+    --texte: #E7EEF4;
+    --texte-att: #9BACBA;
+    --bordure: #324252;
+    --ombre: 0 2px 14px rgba(0,0,0,0.4);
+  }
+
+  html[data-font="dyslexic"], html[data-font="dyslexic"] *{
+    font-family: 'OpenDyslexic', var(--font-corps) !important;
+    letter-spacing: 0.02em;
+  }
+
+  *{ box-sizing: border-box; }
+  body{
+    margin:0; background: var(--bg); color: var(--texte);
+    font-family: var(--font-corps); font-size: 14px; line-height: 1.5;
+  }
+  h1,h2,h3{ font-family: var(--font-titre); margin: 0 0 .4em 0; font-weight: 700; }
+  h1{ font-size: 1.3rem; } h2{ font-size: 1.1rem; } h3{ font-size: .95rem; color: var(--texte-att); text-transform: uppercase; letter-spacing: .04em; }
+  button{ font-family: var(--font-corps); cursor:pointer; }
+  input, select, textarea{ font-family: var(--font-corps); }
+  a{ color: var(--bleu); }
+
+  #app{ display:flex; flex-direction:column; height:100vh; min-height: 480px; }
+
+  .topbar{
+    display:flex; align-items:center; gap:14px; padding: 10px 18px;
+    background: linear-gradient(100deg, var(--bleu) 0%, var(--teal) 100%);
+    color: #fff; flex: 0 0 auto;
+  }
+  .topbar h1{ color:#fff; font-size: 1.05rem; flex:1; }
+  .topbar .sub{ font-size:.72rem; opacity:.85; font-family: var(--font-mono); }
+  .icon-btn{
+    background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.3); color:#fff;
+    border-radius: 8px; padding: 6px 10px; font-size: .78rem; display:flex; align-items:center; gap:6px;
+  }
+  .icon-btn:hover{ background: rgba(255,255,255,.28); }
+  .status-pill{
+    font-size:.7rem; padding: 3px 9px; border-radius: 999px; background: rgba(255,255,255,.18);
+    font-family: var(--font-mono);
+  }
+  .status-pill.ok::before{ content:"● "; color:#7CF0B2; }
+  .status-pill.err::before{ content:"● "; color:#FF8B8B; }
+  .status-pill.wait::before{ content:"● "; color:#FFE08A; }
+
+  .body-row{ display:flex; flex:1 1 auto; min-height:0; }
+
+  .sidebar{
+    width: 198px; flex:0 0 auto; background: var(--surface); border-right:1px solid var(--bordure);
+    padding: 12px 8px; overflow-y:auto;
+  }
+  .nav-item{
+    display:flex; align-items:center; gap:10px; padding: 9px 11px; border-radius: 8px;
+    color: var(--texte-att); font-weight:500; font-size:.86rem; margin-bottom:2px; user-select:none;
+  }
+  .nav-item .ic{ font-size: 1rem; width:18px; text-align:center; }
+  .nav-item:hover{ background: var(--surface-2); color: var(--texte); }
+  .nav-item.active{ background: var(--bleu); color:#fff; }
+  .nav-sep{ height:1px; background:var(--bordure); margin: 10px 6px; }
+
+  main{ flex:1 1 auto; overflow-y:auto; padding: 20px 26px; }
+  .panel{ display:none; max-width: 1180px; }
+  .panel.active{ display:block; }
+  .panel-head{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:16px; gap:10px; flex-wrap:wrap; }
+  .panel-head .actions{ display:flex; gap:8px; flex-wrap:wrap; }
+
+  .card{ background: var(--surface); border:1px solid var(--bordure); border-radius: var(--rayon); padding:16px; box-shadow: var(--ombre); }
+  .grid{ display:grid; gap:14px; }
+  .grid-cols-4{ grid-template-columns: repeat(4, 1fr); }
+  .grid-cols-3{ grid-template-columns: repeat(3, 1fr); }
+  .grid-cols-2{ grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 880px){ .grid-cols-4{ grid-template-columns: repeat(2,1fr);} .grid-cols-3{ grid-template-columns: repeat(2,1fr);} }
+
+  .kpi{ padding: 14px 16px; }
+  .kpi .val{ font-family: var(--font-mono); font-size: 1.7rem; font-weight:600; color: var(--bleu-fonce); }
+  html[data-theme="dark"] .kpi .val{ color: #8FCBFF; }
+  .kpi .lbl{ font-size:.78rem; color: var(--texte-att); margin-top:2px; }
+
+  table.tbl{ width:100%; border-collapse: collapse; font-size: .85rem; }
+  table.tbl th{ text-align:left; font-weight:600; color: var(--texte-att); font-size:.74rem; text-transform: uppercase; letter-spacing:.03em;
+    border-bottom: 2px solid var(--bordure); padding: 8px 9px; white-space:nowrap; }
+  table.tbl td{ padding: 8px 9px; border-bottom: 1px solid var(--bordure); vertical-align: middle; }
+  table.tbl tr:hover td{ background: var(--surface-2); }
+  table.tbl tfoot td{ font-weight:600; }
+
+  .badge{ display:inline-flex; align-items:center; gap:5px; padding: 2px 9px; border-radius:999px; font-size:.74rem; font-weight:600; }
+  .badge.statut-attente{ background:#FCE9C6; color:#8A5A0A; }
+  .badge.statut-approuve{ background:#D6F0E0; color:#1C6E40; }
+  .badge.statut-refuse{ background:#F8D9D9; color:#9C2A2A; }
+  .badge.statut-annule{ background:#E6E9EC; color:#5A6B7A; }
+  html[data-theme="dark"] .badge.statut-attente{ background:#4A3A14; color:#FFD27A; }
+  html[data-theme="dark"] .badge.statut-approuve{ background:#16432B; color:#7CE0A8; }
+  html[data-theme="dark"] .badge.statut-refuse{ background:#4A1E1E; color:#FF9C9C; }
+  html[data-theme="dark"] .badge.statut-annule{ background:#2C3640; color:#9BACBA; }
+
+  .dot{ width:9px; height:9px; border-radius:50%; display:inline-block; }
+
+  .btn{ border:1px solid var(--bordure); background: var(--surface); color: var(--texte); border-radius:7px;
+    padding: 7px 13px; font-size:.82rem; font-weight:600; display:inline-flex; align-items:center; gap:6px; }
+  .btn:hover{ border-color: var(--bleu); color: var(--bleu); }
+  .btn.primary{ background: var(--bleu); border-color: var(--bleu); color:#fff; }
+  .btn.primary:hover{ background: var(--bleu-fonce); color:#fff; }
+  .btn.success{ background: var(--vert); border-color: var(--vert); color:#fff; }
+  .btn.danger{ background: var(--rouge); border-color: var(--rouge); color:#fff; }
+  .btn.ghost{ background:transparent; border-color: transparent; }
+  .btn.small{ padding:4px 9px; font-size:.74rem; }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; }
+
+  .field{ display:flex; flex-direction:column; gap:5px; margin-bottom:13px; }
+  .field label{ font-size:.78rem; font-weight:600; color: var(--texte-att); }
+  .field .hint{ font-size:.72rem; color: var(--texte-att); }
+  input[type=text], input[type=date], input[type=number], input[type=email], select, textarea{
+    border:1px solid var(--bordure); border-radius:7px; padding:8px 10px; background: var(--surface); color: var(--texte); font-size:.86rem;
+  }
+  input:focus, select:focus, textarea:focus{ outline:2px solid var(--teal); outline-offset:1px; }
+  textarea{ resize: vertical; min-height: 56px; }
+  .checkline{ display:flex; align-items:center; gap:8px; font-size:.86rem; }
+
+  .banner{ border-radius: var(--rayon); padding:14px 16px; margin-bottom:16px; font-size:.86rem; display:flex; gap:12px; align-items:flex-start; }
+  .banner.warn{ background:#FCE9C6; color:#5A3D0A; border:1px solid #E8C27A; }
+  .banner.info{ background:#D9ECFE; color:#0A3D6E; border:1px solid #9FCBF2; }
+  .banner.err{ background:#F8D9D9; color:#7A1F1F; border:1px solid #E8A3A3; }
+  html[data-theme="dark"] .banner.warn{ background:#4A3A14; color:#FFD27A; border-color:#6B521E; }
+  html[data-theme="dark"] .banner.info{ background:#1B3550; color:#AFD8FF; border-color:#2C5276; }
+  html[data-theme="dark"] .banner.err{ background:#4A1E1E; color:#FF9C9C; border-color:#6B2C2C; }
+
+  .empty{ text-align:center; padding: 36px 10px; color: var(--texte-att); }
+  .empty .big{ font-size:2rem; margin-bottom:6px; }
+
+  .modal-bg{ position:fixed; inset:0; background:rgba(10,20,30,.45); display:flex; align-items:center; justify-content:center; z-index:50; }
+  .modal{ background: var(--surface); border-radius: var(--rayon); padding:20px; width: 380px; max-width:90vw; box-shadow: 0 12px 40px rgba(0,0,0,.3); }
+
+  .legend{ display:flex; gap:14px; flex-wrap:wrap; font-size:.78rem; color:var(--texte-att); }
+  .legend span{ display:inline-flex; align-items:center; gap:5px; }
+
+  .cal-wrap{ overflow-x:auto; }
+  table.cal{ border-collapse:collapse; font-size:.74rem; }
+  table.cal th, table.cal td{ border:1px solid var(--bordure); padding:0; }
+  table.cal th{ background: var(--surface-2); padding:5px 3px; text-align:center; font-weight:600; min-width: 26px; }
+  table.cal td.nom{ background: var(--surface-2); padding:5px 8px; font-weight:600; white-space:nowrap; position:sticky; left:0; }
+  table.cal td.cell{ width:26px; height:26px; text-align:center; cursor:default; }
+  table.cal th.weekend, table.cal td.weekend{ background: var(--surface-2); opacity:.7; }
+  table.cal th.holiday{ background:#F8D9D9; }
+
+  ::-webkit-scrollbar{ width:9px; height:9px; }
+  ::-webkit-scrollbar-thumb{ background: var(--bordure); border-radius:6px; }
+
+  @media print{
+    .no-print{ display:none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="topbar">
+    <h1>Gestion des absences — PEPS</h1>
+    <span class="sub" id="lastSync">—</span>
+    <span class="status-pill wait" id="statusPill">Connexion…</span>
+    <button class="icon-btn" onclick="manualRefresh()" title="Rafraîchir">⟳ Rafraîchir</button>
+    <button class="icon-btn" onclick="toggleTheme()" title="Mode sombre">🌙</button>
+    <button class="icon-btn" onclick="toggleFont()" title="Police dyslexie">Aa</button>
+  </div>
+
+  <div class="body-row">
+    <div class="sidebar no-print" id="sidebar">
+      <div class="nav-item active" data-panel="dashboard" onclick="showPanel('dashboard')"><span class="ic">📊</span> Tableau de bord</div>
+      <div class="nav-item" data-panel="saisie" onclick="showPanel('saisie')"><span class="ic">📝</span> Saisie</div>
+      <div class="nav-item" data-panel="validation" onclick="showPanel('validation')"><span class="ic">✅</span> Validation</div>
+      <div class="nav-item" data-panel="planning" onclick="showPanel('planning')"><span class="ic">📅</span> Planning</div>
+      <div class="nav-item" data-panel="soldes" onclick="showPanel('soldes')"><span class="ic">⏳</span> Soldes</div>
+      <div class="nav-sep"></div>
+      <div class="nav-item" data-panel="referentiel" onclick="showPanel('referentiel')"><span class="ic">👤</span> PEPS (référentiel)</div>
+      <div class="nav-item" data-panel="types" onclick="showPanel('types')"><span class="ic">🏷️</span> Types d'absence</div>
+    </div>
+
+    <main id="main">
+      <div class="panel" id="panel-setup"></div>
+      <div class="panel" id="panel-dashboard"></div>
+      <div class="panel" id="panel-saisie"></div>
+      <div class="panel" id="panel-validation"></div>
+      <div class="panel" id="panel-planning"></div>
+      <div class="panel" id="panel-soldes"></div>
+      <div class="panel" id="panel-referentiel"></div>
+      <div class="panel" id="panel-types"></div>
+    </main>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+
+<script>
+/* ==========================================================================
+   GESTION DES ABSENCES PEPS — widget Grist
+   ==========================================================================
+   IMPORTANT — dates et Grist :
+   Les colonnes Date/DateTime de Grist sont stockées comme un nombre de
+   SECONDES DEPUIS EPOCH (UTC), pas comme une chaîne "AAAA-MM-JJ".
+   Pour éviter les décalages d'un jour liés au fuseau horaire / heure d'été
+   (le même type de bug que sur le simulateur de gratification de stage),
+   on ne déduit jamais un jour calendaire directement d'un new Date(s*1000):
+   on repasse systématiquement par les getters UTC, et à l'écriture on
+   reconstruit un epoch UTC à partir de l'année/mois/jour calendaires
+   (voir dateToGristEpoch / gristEpochToDate ci-dessous).
+   ========================================================================== */
+
+(function(){
+
+  /* ---------------------------------------------------------------------
+     1. UTILITAIRES DE DATES
+     --------------------------------------------------------------------- */
+  function pad(n){ return String(n).padStart(2,'0'); }
+
+  // "AAAA-MM-JJ" (valeur d'un <input type=date>) -> objet Date locale à midi
+  // (midi = marge de sécurité contre tout décalage DST d'une heure)
+  function inputToDate(str){
+    if(!str) return null;
+    return new Date(str + 'T12:00:00');
+  }
+  function dateToInputStr(d){
+    if(!d) return '';
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+  function ymdKey(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+
+  // Date calendaire (Y/M/D) -> epoch secondes UTC minuit, pour écrire dans Grist
+  function dateToGristEpoch(d){
+    return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())/1000);
+  }
+  // Valeur lue depuis Grist (epoch secondes, ou parfois chaîne) -> objet Date locale à midi
+  function gristEpochToDate(v){
+    if(v === null || v === undefined || v === '' || v === 0) return null;
+    if(typeof v === 'string') return inputToDate(v.slice(0,10));
+    const d = new Date(v*1000);
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12,0,0);
+  }
+  function nowEpoch(){ return Math.floor(Date.now()/1000); }
+  function epochToDateTimeStr(v){
+    if(!v) return '—';
+    const d = new Date(v*1000);
+    return d.toLocaleString('fr-FR', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
+  function fmtDate(d){
+    if(!d) return '—';
+    return d.toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit',year:'numeric'});
+  }
+  function fmtDateShort(d){
+    if(!d) return '—';
+    return d.toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit'});
+  }
+
+  // Algorithme de Meeus/Jones/Butcher : date de Pâques (calendrier grégorien)
+  function easterDate(year){
+    const a = year % 19;
+    const b = Math.floor(year/100);
+    const c = year % 100;
+    const d = Math.floor(b/4);
+    const e = b % 4;
+    const f = Math.floor((b+8)/25);
+    const g = Math.floor((b-f+1)/3);
+    const h = (19*a + b - d - g + 15) % 30;
+    const i = Math.floor(c/4);
+    const k = c % 4;
+    const l = (32 + 2*e + 2*i - h - k) % 7;
+    const m = Math.floor((a + 11*h + 22*l)/451);
+    const month = Math.floor((h + l - 7*m + 114)/31);
+    const day = ((h + l - 7*m + 114) % 31) + 1;
+    return new Date(year, month-1, day, 12,0,0);
+  }
+  function addDays(d, n){
+    const r = new Date(d);
+    r.setDate(r.getDate()+n);
+    return r;
+  }
+  // Jours fériés français (fixes + mobiles dérivés de Pâques) pour une année
+  const _holidaysCache = {};
+  function frenchHolidays(year){
+    if(_holidaysCache[year]) return _holidaysCache[year];
+    const set = new Set();
+    set.add(ymdKey(new Date(year,0,1)));    // Jour de l'an
+    set.add(ymdKey(new Date(year,4,1)));    // Fête du travail
+    set.add(ymdKey(new Date(year,4,8)));    // Victoire 1945
+    set.add(ymdKey(new Date(year,6,14)));   // Fête nationale
+    set.add(ymdKey(new Date(year,7,15)));   // Assomption
+    set.add(ymdKey(new Date(year,10,1)));   // Toussaint
+    set.add(ymdKey(new Date(year,10,11)));  // Armistice
+    set.add(ymdKey(new Date(year,11,25)));  // Noël
+    const easter = easterDate(year);
+    set.add(ymdKey(addDays(easter,1)));     // Lundi de Pâques
+    set.add(ymdKey(addDays(easter,39)));    // Ascension
+    set.add(ymdKey(addDays(easter,50)));    // Lundi de Pentecôte
+    _holidaysCache[year] = set;
+    return set;
+  }
+  function isWorkingDay(d){
+    const day = d.getDay();
+    if(day===0 || day===6) return false;
+    if(frenchHolidays(d.getFullYear()).has(ymdKey(d))) return false;
+    return true;
+  }
+  // Nombre de jours décomptés entre deux dates incluses, en tenant compte
+  // des week-ends, jours fériés, et de la demi-journée éventuelle.
+  function computeNbJours(dDebut, dFin, demiJournee){
+    if(!dDebut || !dFin) return 0;
+    if(demiJournee){
+      return isWorkingDay(dDebut) ? 0.5 : 0;
+    }
+    let count = 0;
+    let cur = new Date(dDebut);
+    while(cur <= dFin){
+      if(isWorkingDay(cur)) count++;
+      cur = addDays(cur,1);
+    }
+    return count;
+  }
+
+  /* ---------------------------------------------------------------------
+     2. THÈME / POLICE (préférences d'affichage uniquement — pas de données)
+     --------------------------------------------------------------------- */
+  function applyPrefs(){
+    document.documentElement.setAttribute('data-theme', localStorage.getItem('peps_theme') || 'light');
+    document.documentElement.setAttribute('data-font', localStorage.getItem('peps_font') || 'normal');
+  }
+  window.toggleTheme = function(){
+    const cur = localStorage.getItem('peps_theme') || 'light';
+    localStorage.setItem('peps_theme', cur === 'light' ? 'dark' : 'light');
+    applyPrefs();
+  };
+  window.toggleFont = function(){
+    const cur = localStorage.getItem('peps_font') || 'normal';
+    localStorage.setItem('peps_font', cur === 'normal' ? 'dyslexic' : 'normal');
+    applyPrefs();
+  };
+  applyPrefs();
+
+  /* ---------------------------------------------------------------------
+     3. ACCÈS GRIST — schéma des tables + CRUD générique
+     --------------------------------------------------------------------- */
+  const SCHEMA = {
+    PEPS: [
+      {id:'nom', type:'Text'},
+      {id:'prenom', type:'Text'},
+      {id:'unite', type:'Text'},
+      {id:'statut_peps', type:'Choice', widgetOptions: JSON.stringify({choices:[
+        'Doctorant externe','Chercheur invité','Stagiaire non gratifié',
+        'Personnel mis à disposition','Retraité - mission','Autre']})},
+      {id:'email', type:'Text'},
+      {id:'date_debut_accueil', type:'Date'},
+      {id:'date_fin_accueil', type:'Date'},
+      {id:'actif', type:'Bool'},
+      {id:'commentaire', type:'Text'}
+    ],
+    Types_Absence: [
+      {id:'libelle', type:'Text'},
+      {id:'decompte_solde', type:'Bool'},
+      {id:'couleur', type:'Text'},
+      {id:'justificatif_requis', type:'Bool'},
+      {id:'ordre', type:'Int'}
+    ],
+    Quotas_PEPS: [
+      {id:'peps_id', type:'Ref:PEPS'},
+      {id:'type_id', type:'Ref:Types_Absence'},
+      {id:'annee', type:'Int'},
+      {id:'jours_acquis', type:'Numeric'}
+    ],
+    Absences_PEPS: [
+      {id:'peps_id', type:'Ref:PEPS'},
+      {id:'type_id', type:'Ref:Types_Absence'},
+      {id:'date_debut', type:'Date'},
+      {id:'date_fin', type:'Date'},
+      {id:'demi_journee', type:'Bool'},
+      {id:'periode_demi', type:'Choice', widgetOptions: JSON.stringify({choices:['Matin','Après-midi']})},
+      {id:'nb_jours', type:'Numeric'},
+      {id:'statut', type:'Choice', widgetOptions: JSON.stringify({choices:['En attente','Approuvé','Refusé','Annulé']})},
+      {id:'commentaire', type:'Text'},
+      {id:'motif_refus', type:'Text'},
+      {id:'date_creation', type:'DateTime:Europe/Paris'},
+      {id:'valideur', type:'Text'},
+      {id:'date_validation', type:'DateTime:Europe/Paris'}
+    ]
+  };
+  const SEED_TYPES = [
+    {libelle:'Congés payés', decompte_solde:true,  couleur:'#00A3A6', justificatif_requis:false, ordre:1},
+    {libelle:'RTT',          decompte_solde:true,  couleur:'#0057A8', justificatif_requis:false, ordre:2},
+    {libelle:'Arrêt',        decompte_solde:false, couleur:'#D64545', justificatif_requis:true,  ordre:3},
+    {libelle:'Mission',      decompte_solde:false, couleur:'#E8A33D', justificatif_requis:false, ordre:4}
+  ];
+
+  async function applyActions(actions){
+    return grist.docApi.applyUserActions(actions);
+  }
+  async function fetchRows(tableId){
+    const data = await grist.docApi.fetchTable(tableId);
+    const ids = data.id || [];
+    return ids.map((id,i)=>{
+      const row = {id};
+      Object.keys(data).forEach(k=>{ if(k!=='id') row[k] = data[k][i]; });
+      return row;
+    });
+  }
+  async function addRow(tableId, fields){
+    const res = await applyActions([['AddRecord', tableId, null, fields]]);
+    return res.retValues[0];
+  }
+  async function updateRow(tableId, rowId, fields){
+    await applyActions([['UpdateRecord', tableId, rowId, fields]]);
+  }
+  async function removeRow(tableId, rowId){
+    await applyActions([['RemoveRecord', tableId, rowId]]);
+  }
+  async function tableExists(tableId){
+    try{ await grist.docApi.fetchTable(tableId); return true; }
+    catch(e){ return false; }
+  }
+  async function checkSchema(){
+    const missing = [];
+    for(const t of Object.keys(SCHEMA)){
+      if(!(await tableExists(t))) missing.push(t);
+    }
+    return missing;
+  }
+  async function createSchema(missing){
+    const actions = missing.map(t => ['AddTable', t, SCHEMA[t]]);
+    await applyActions(actions);
+    if(missing.includes('Types_Absence')){
+      const cols = {};
+      Object.keys(SEED_TYPES[0]).forEach(k => { cols[k] = SEED_TYPES.map(r => r[k]); });
+      await applyActions([['BulkAddRecord','Types_Absence', SEED_TYPES.map(()=>null), cols]]);
+    }
+  }
+
+  /* le reste de l'application (état, rendu des panneaux, init) est ajouté ci-dessous */
+  window._peps = {
+    pad, inputToDate, dateToInputStr, ymdKey, dateToGristEpoch, gristEpochToDate,
+    nowEpoch, epochToDateTimeStr, fmtDate, fmtDateShort, isWorkingDay, computeNbJours,
+    fetchRows, addRow, updateRow, removeRow, applyActions, checkSchema, createSchema, SCHEMA, SEED_TYPES
+  };
+})();
+</script>
+<script>
+/* ==========================================================================
+   ÉTAT, INITIALISATION, RENDU DES PANNEAUX
+   ========================================================================== */
+(function(){
+  const U = window._peps;
+  const state = {
+    peps: [], types: [], quotas: [], absences: [],
+    year: new Date().getFullYear(),
+    validationFilter: 'attente', // 'attente' | 'tous'
+    soldesYear: new Date().getFullYear(),
+    planning: (function(){ const n=new Date(); return {y:n.getFullYear(), m:n.getMonth(), onlyActifs:true}; })(),
+    ready: false
+  };
+
+  /* ---------- helpers de lookup ---------- */
+  function pepsById(id){ return state.peps.find(p => p.id === id); }
+  function typeById(id){ return state.types.find(t => t.id === id); }
+  function pepsLabel(id){ const p = pepsById(id); return p ? `${p.prenom} ${p.nom}` : '—'; }
+  function typeLabel(id){ const t = typeById(id); return t ? t.libelle : '—'; }
+  function typeColor(id){ const t = typeById(id); return t ? t.couleur : '#999'; }
+  function sortedTypes(){ return [...state.types].sort((a,b)=> (a.ordre||0)-(b.ordre||0)); }
+  function activePeps(){ return state.peps.filter(p=>p.actif).sort((a,b)=> (a.nom||'').localeCompare(b.nom||'')); }
+  function escapeHtml(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function statutClass(s){
+    return ({'En attente':'statut-attente','Approuvé':'statut-approuve','Refusé':'statut-refuse','Annulé':'statut-annule'})[s] || 'statut-annule';
+  }
+
+  /* ---------- modal générique ---------- */
+  function openModal(html){
+    document.getElementById('modalRoot').innerHTML = `<div class="modal-bg" onclick="if(event.target===this) window.closeModal()"><div class="modal">${html}</div></div>`;
+  }
+  window.closeModal = function(){ document.getElementById('modalRoot').innerHTML = ''; };
+
+  /* ---------- statut pill / sync ---------- */
+  function setStatus(kind, text){
+    const el = document.getElementById('statusPill');
+    el.className = 'status-pill ' + kind;
+    el.textContent = text;
+  }
+  function setSync(){
+    document.getElementById('lastSync').textContent = 'maj ' + new Date().toLocaleTimeString('fr-FR');
+  }
+
+  /* ---------- navigation entre panneaux ---------- */
+  window.showPanel = function(name){
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.panel === name));
+    document.querySelectorAll('.panel').forEach(el => el.classList.remove('active'));
+    const p = document.getElementById('panel-' + name);
+    if(p) p.classList.add('active');
+    state.currentPanel = name;
+    renderCurrentPanel();
+  };
+  function renderCurrentPanel(){
+    if(!state.ready) return;
+    const fns = {
+      dashboard: renderDashboard, saisie: renderSaisie, validation: renderValidation,
+      planning: renderPlanning, soldes: renderSoldes, referentiel: renderReferentiel, types: renderTypes
+    };
+    const fn = fns[state.currentPanel];
+    if(fn) fn();
+  }
+
+  /* ---------- chargement des données ---------- */
+  async function loadAll(){
+    const [peps, types, quotas, absences] = await Promise.all([
+      U.fetchRows('PEPS'), U.fetchRows('Types_Absence'), U.fetchRows('Quotas_PEPS'), U.fetchRows('Absences_PEPS')
+    ]);
+    state.peps = peps;
+    state.types = types;
+    state.quotas = quotas;
+    state.absences = absences;
+    setSync();
+  }
+  window.manualRefresh = async function(){
+    setStatus('wait','Synchronisation…');
+    try{ await loadAll(); setStatus('ok','Connecté'); renderCurrentPanel(); }
+    catch(e){ setStatus('err','Erreur'); console.error(e); }
+  };
+
+  /* ---------- setup initial (création des tables si absentes) ---------- */
+  function renderSetup(missing){
+    document.getElementById('panel-setup').innerHTML = `
+      <div class="banner warn">
+        <div style="font-size:1.3rem">⚠️</div>
+        <div>
+          <strong>Structure Grist manquante.</strong><br>
+          Les tables suivantes n'existent pas encore dans ce document : <code>${missing.join(', ')}</code>.<br>
+          Cliquez sur le bouton ci-dessous pour les créer automatiquement (4 types d'absence de base seront
+          ajoutés : Congés payés, RTT, Arrêt, Mission). Cette opération est sûre et ne touche à aucune autre table.
+        </div>
+      </div>
+      <button class="btn primary" onclick="runSetup()">Créer la structure dans Grist</button>
+      <p class="hint" style="margin-top:14px;">
+        Si ce bouton échoue (droits d'accès insuffisants), demandez à un administrateur du document de créer les
+        4 tables manuellement avec les colonnes exactes listées dans le code source du widget (section SCHEMA),
+        ou ouvrez-moi à nouveau en lui expliquant l'erreur affichée.
+      </p>`;
+    document.querySelectorAll('.panel').forEach(el => el.classList.remove('active'));
+    document.getElementById('panel-setup').classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(el => el.style.opacity = .4);
+  }
+  window.runSetup = async function(){
+    try{
+      setStatus('wait','Création…');
+      const missing = await U.checkSchema();
+      await U.createSchema(missing);
+      await boot();
+    }catch(e){
+      console.error(e);
+      document.getElementById('panel-setup').insertAdjacentHTML('beforeend',
+        `<div class="banner err">Échec de la création automatique : ${escapeHtml(e.message||String(e))}</div>`);
+      setStatus('err','Erreur');
+    }
+  };
+
+  /* ---------- démarrage ---------- */
+  async function boot(){
+    try{
+      const missing = await U.checkSchema();
+      if(missing.length){ renderSetup(missing); return; }
+      document.querySelectorAll('.nav-item').forEach(el => el.style.opacity = 1);
+      await loadAll();
+      state.ready = true;
+      setStatus('ok','Connecté');
+      window.showPanel('dashboard');
+    }catch(e){
+      console.error(e);
+      setStatus('err','Erreur de connexion');
+      document.getElementById('panel-setup').classList.add('active');
+      document.getElementById('panel-setup').innerHTML =
+        `<div class="banner err"><div>❌</div><div><strong>Impossible de contacter Grist.</strong><br>${escapeHtml(e.message||String(e))}</div></div>`;
+    }
+  }
+  grist.ready({requiredAccess:'full'});
+  boot();
+  setInterval(()=>{ if(state.ready) window.manualRefresh(); }, 60000);
+
+  /* =====================================================================
+     TABLEAU DE BORD
+     ===================================================================== */
+  function renderDashboard(){
+    const today = new Date(); today.setHours(12,0,0,0);
+    const enAttente = state.absences.filter(a=>a.statut==='En attente');
+    const enCours = state.absences.filter(a=>{
+      if(a.statut!=='Approuvé') return false;
+      const d1=U.gristEpochToDate(a.date_debut), d2=U.gristEpochToDate(a.date_fin);
+      return d1 && d2 && d1<=today && today<=d2;
+    });
+    const dans7j = state.absences.filter(a=>{
+      if(a.statut!=='Approuvé') return false;
+      const d1=U.gristEpochToDate(a.date_debut);
+      if(!d1 || d1<today) return false;
+      const diff = (d1-today)/86400000;
+      return diff>=0 && diff<=7;
+    });
+    const alertes = state.absences.filter(a=>{
+      const t = typeById(a.type_id);
+      return t && t.justificatif_requis && a.statut!=='Refusé' && a.statut!=='Annulé' && !(a.commentaire||'').trim();
+    });
+
+    const rowsAttente = enAttente.slice(0,6).map(a=>`
+      <tr>
+        <td>${escapeHtml(pepsLabel(a.peps_id))}</td>
+        <td><span class="dot" style="background:${typeColor(a.type_id)}"></span> ${escapeHtml(typeLabel(a.type_id))}</td>
+        <td>${U.fmtDateShort(U.gristEpochToDate(a.date_debut))} → ${U.fmtDateShort(U.gristEpochToDate(a.date_fin))}</td>
+        <td style="font-family:var(--font-mono)">${a.nb_jours}</td>
+      </tr>`).join('');
+
+    document.getElementById('panel-dashboard').innerHTML = `
+      <div class="panel-head"><h1>Tableau de bord</h1></div>
+      <div class="grid grid-cols-4" style="margin-bottom:18px;">
+        <div class="card kpi"><div class="val">${activePeps().length}</div><div class="lbl">PEPS actifs</div></div>
+        <div class="card kpi"><div class="val">${enAttente.length}</div><div class="lbl">Demandes en attente</div></div>
+        <div class="card kpi"><div class="val">${enCours.length}</div><div class="lbl">Absences en cours aujourd'hui</div></div>
+        <div class="card kpi"><div class="val">${dans7j.length}</div><div class="lbl">Absences dans les 7 jours</div></div>
+      </div>
+      <div class="grid grid-cols-2">
+        <div class="card">
+          <h3>Demandes en attente</h3>
+          ${enAttente.length===0 ? `<div class="empty"><div class="big">✓</div>Aucune demande en attente.</div>` : `
+          <table class="tbl"><thead><tr><th>PEPS</th><th>Type</th><th>Période</th><th>Jrs</th></tr></thead>
+          <tbody>${rowsAttente}</tbody></table>
+          <div style="margin-top:10px;"><button class="btn small" onclick="showPanel('validation')">Aller à la validation →</button></div>`}
+        </div>
+        <div class="card">
+          <h3>Alertes justificatif</h3>
+          ${alertes.length===0 ? `<div class="empty"><div class="big">✓</div>Rien à signaler.</div>` :
+            `<table class="tbl"><thead><tr><th>PEPS</th><th>Type</th><th>Commentaire</th></tr></thead><tbody>
+              ${alertes.slice(0,6).map(a=>`<tr><td>${escapeHtml(pepsLabel(a.peps_id))}</td><td>${escapeHtml(typeLabel(a.type_id))}</td><td style="color:var(--rouge)">manquant</td></tr>`).join('')}
+            </tbody></table>
+            <p class="hint" style="margin-top:8px">Type nécessitant un justificatif, sans commentaire/référence renseigné.</p>`}
+        </div>
+      </div>`;
+  }
+
+  /* =====================================================================
+     SAISIE
+     ===================================================================== */
+  function renderSaisie(){
+    const peps = activePeps();
+    const types = sortedTypes();
+    document.getElementById('panel-saisie').innerHTML = `
+      <div class="panel-head"><h1>Nouvelle demande d'absence</h1></div>
+      <div class="card" style="max-width:560px;">
+        ${peps.length===0 ? `<div class="banner warn">Aucun PEPS actif. Ajoutez d'abord un PEPS dans le référentiel.</div>` : ''}
+        ${types.length===0 ? `<div class="banner warn">Aucun type d'absence configuré.</div>` : ''}
+        <form id="formSaisie" onsubmit="return submitSaisie(event)">
+          <div class="field"><label>PEPS</label>
+            <select id="s_peps" required>
+              <option value="">— choisir —</option>
+              ${peps.map(p=>`<option value="${p.id}">${escapeHtml(p.prenom)} ${escapeHtml(p.nom)} (${escapeHtml(p.unite||'')})</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>Type d'absence</label>
+            <select id="s_type" required onchange="updateSaisiePreview()">
+              <option value="">— choisir —</option>
+              ${types.map(t=>`<option value="${t.id}">${escapeHtml(t.libelle)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="grid grid-cols-2">
+            <div class="field"><label>Date de début</label><input type="date" id="s_debut" required onchange="updateSaisiePreview()"></div>
+            <div class="field"><label>Date de fin</label><input type="date" id="s_fin" required onchange="updateSaisiePreview()"></div>
+          </div>
+          <div class="field">
+            <label class="checkline"><input type="checkbox" id="s_demi" onchange="updateSaisiePreview()"> Demi-journée (uniquement si date début = date fin)</label>
+            <select id="s_periode" style="display:none; margin-top:6px;"><option>Matin</option><option>Après-midi</option></select>
+          </div>
+          <div class="field"><label>Commentaire / référence justificatif</label>
+            <textarea id="s_comment" placeholder="Précisions, n° de justificatif…"></textarea>
+          </div>
+          <div class="banner info" id="s_preview">Renseignez les dates pour voir le nombre de jours décomptés (week-ends et jours fériés exclus).</div>
+          <button type="submit" class="btn primary">Enregistrer la demande</button>
+        </form>
+      </div>`;
+  }
+  window.updateSaisiePreview = function(){
+    const demiCb = document.getElementById('s_demi');
+    const d1s = document.getElementById('s_debut').value, d2s = document.getElementById('s_fin').value;
+    const sameDay = d1s && d2s && d1s===d2s;
+    demiCb.disabled = !sameDay;
+    if(!sameDay) demiCb.checked = false;
+    document.getElementById('s_periode').style.display = demiCb.checked ? 'block' : 'none';
+    const prev = document.getElementById('s_preview');
+    if(!d1s || !d2s){ prev.textContent = 'Renseignez les dates pour voir le nombre de jours décomptés.'; return; }
+    const d1 = U.inputToDate(d1s), d2 = U.inputToDate(d2s);
+    if(d2 < d1){ prev.textContent = 'La date de fin doit être postérieure ou égale à la date de début.'; prev.className='banner err'; return; }
+    const n = U.computeNbJours(d1, d2, demiCb.checked);
+    prev.className = 'banner info';
+    prev.textContent = `${n} jour${n===1?'':'s'} décompté(s) (week-ends et jours fériés exclus).`;
+  };
+  window.submitSaisie = async function(ev){
+    ev.preventDefault();
+    const pepsId = +document.getElementById('s_peps').value;
+    const typeId = +document.getElementById('s_type').value;
+    const d1 = U.inputToDate(document.getElementById('s_debut').value);
+    const d2 = U.inputToDate(document.getElementById('s_fin').value);
+    const demi = document.getElementById('s_demi').checked;
+    const periode = demi ? document.getElementById('s_periode').value : '';
+    const comment = document.getElementById('s_comment').value.trim();
+    if(!pepsId || !typeId || !d1 || !d2 || d2<d1){ alert('Merci de vérifier les champs du formulaire.'); return false; }
+    const nbJours = U.computeNbJours(d1,d2,demi);
+    const btn = ev.target.querySelector('button[type=submit]');
+    btn.disabled = true; btn.textContent = 'Enregistrement…';
+    try{
+      await U.addRow('Absences_PEPS', {
+        peps_id: pepsId, type_id: typeId,
+        date_debut: U.dateToGristEpoch(d1), date_fin: U.dateToGristEpoch(d2),
+        demi_journee: demi, periode_demi: periode, nb_jours: nbJours,
+        statut: 'En attente', commentaire: comment, motif_refus: '',
+        date_creation: U.nowEpoch(), valideur: '', date_validation: 0
+      });
+      await loadAll();
+      renderSaisie();
+      document.getElementById('panel-saisie').insertAdjacentHTML('afterbegin',
+        `<div class="banner info">✓ Demande enregistrée (${nbJours} j) — en attente de validation.</div>`);
+    }catch(e){
+      console.error(e);
+      alert("Erreur lors de l enregistrement : " + (e.message||e));
+      btn.disabled=false; btn.textContent='Enregistrer la demande';
+    }
+    return false;
+  };
+
+  /* =====================================================================
+     VALIDATION
+     ===================================================================== */
+  function renderValidation(){
+    const validateur = localStorage.getItem('peps_validateur') || '';
+    let list = state.absences.slice().sort((a,b)=> (b.date_creation||0)-(a.date_creation||0));
+    if(state.validationFilter === 'attente') list = list.filter(a=>a.statut==='En attente');
+
+    const rows = list.map(a=>{
+      const t = typeById(a.type_id);
+      const justif = t && t.justificatif_requis;
+      const actions = a.statut==='En attente' ? `
+          <button class="btn small success" onclick="approveAbsence(${a.id})">Approuver</button>
+          <button class="btn small danger" onclick="openRejectModal(${a.id})">Refuser</button>`
+        : a.statut==='Approuvé' ? `<button class="btn small ghost" onclick="cancelAbsence(${a.id})">Annuler</button>`
+        : '';
+      return `<tr>
+        <td>${escapeHtml(pepsLabel(a.peps_id))}</td>
+        <td><span class="dot" style="background:${typeColor(a.type_id)}"></span> ${escapeHtml(typeLabel(a.type_id))}${justif?' <span class="hint">(justif. requis)</span>':''}</td>
+        <td>${U.fmtDateShort(U.gristEpochToDate(a.date_debut))} → ${U.fmtDateShort(U.gristEpochToDate(a.date_fin))}${a.demi_journee?` (½ j ${escapeHtml(a.periode_demi||'')})`:''}</td>
+        <td style="font-family:var(--font-mono)">${a.nb_jours}</td>
+        <td>${escapeHtml(a.commentaire||'')}${a.motif_refus?`<br><span class="hint" style="color:var(--rouge)">Motif refus : ${escapeHtml(a.motif_refus)}</span>`:''}</td>
+        <td><span class="badge ${statutClass(a.statut)}">${escapeHtml(a.statut)}</span></td>
+        <td>${actions}</td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('panel-validation').innerHTML = `
+      <div class="panel-head">
+        <h1>Validation des demandes</h1>
+        <div class="actions">
+          <select id="v_filter" onchange="setValidationFilter(this.value)">
+            <option value="attente" ${state.validationFilter==='attente'?'selected':''}>En attente uniquement</option>
+            <option value="tous" ${state.validationFilter==='tous'?'selected':''}>Historique complet</option>
+          </select>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:14px;">
+        <div class="field" style="margin-bottom:0;max-width:320px;">
+          <label>Validateur (nom affiché lors de la validation)</label>
+          <input type="text" id="v_validateur" value="${escapeHtml(validateur)}" placeholder="Prénom Nom" onchange="localStorage.setItem('peps_validateur', this.value)">
+        </div>
+      </div>
+      <div class="card">
+        ${rows ? `<table class="tbl"><thead><tr><th>PEPS</th><th>Type</th><th>Période</th><th>Jrs</th><th>Commentaire</th><th>Statut</th><th>Actions</th></tr></thead>
+        <tbody>${rows}</tbody></table>` : `<div class="empty"><div class="big">✓</div>Aucune demande à afficher.</div>`}
+      </div>`;
+  }
+  window.setValidationFilter = function(v){ state.validationFilter = v; renderValidation(); };
+  window.approveAbsence = async function(id){
+    const validateur = localStorage.getItem('peps_validateur') || '';
+    if(!validateur.trim()){ alert("Merci de renseigner votre nom dans le champ « Validateur » avant de valider."); return; }
+    await U.updateRow('Absences_PEPS', id, {statut:'Approuvé', valideur, date_validation: U.nowEpoch()});
+    await loadAll(); renderValidation();
+  };
+  window.cancelAbsence = async function(id){
+    if(!confirm('Annuler cette absence déjà approuvée ?')) return;
+    await U.updateRow('Absences_PEPS', id, {statut:'Annulé'});
+    await loadAll(); renderValidation();
+  };
+  window.openRejectModal = function(id){
+    openModal(`
+      <h2>Refuser la demande</h2>
+      <div class="field"><label>Motif du refus</label><textarea id="rejectMotif" placeholder="Obligatoire"></textarea></div>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button class="btn" onclick="closeModal()">Annuler</button>
+        <button class="btn danger" onclick="confirmReject(${id})">Confirmer le refus</button>
+      </div>`);
+  };
+  window.confirmReject = async function(id){
+    const motif = document.getElementById('rejectMotif').value.trim();
+    if(!motif){ alert('Le motif du refus est obligatoire.'); return; }
+    const validateur = localStorage.getItem('peps_validateur') || '';
+    await U.updateRow('Absences_PEPS', id, {statut:'Refusé', motif_refus: motif, valideur, date_validation: U.nowEpoch()});
+    closeModal();
+    await loadAll(); renderValidation();
+  };
+
+  /* =====================================================================
+     PLANNING
+     ===================================================================== */
+  function renderPlanning(){
+    const pl = state.planning;
+    const daysInMonth = new Date(pl.y, pl.m+1, 0).getDate();
+    const monthNames = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+    const peopleList = (pl.onlyActifs ? activePeps() : state.peps.slice().sort((a,b)=>(a.nom||'').localeCompare(b.nom||'')));
+
+    let headCells = '';
+    for(let d=1; d<=daysInMonth; d++){
+      const date = new Date(pl.y, pl.m, d, 12,0,0);
+      const we = date.getDay()===0 || date.getDay()===6;
+      const hol = U.isWorkingDay(date) ? false : !we;
+      headCells += `<th class="${we?'weekend':''}${hol?' holiday':''}" title="${date.toLocaleDateString('fr-FR',{weekday:'long'})}">${d}</th>`;
+    }
+    const bodyRows = peopleList.map(p=>{
+      let cells = '';
+      for(let d=1; d<=daysInMonth; d++){
+        const date = new Date(pl.y, pl.m, d, 12,0,0);
+        const we = date.getDay()===0 || date.getDay()===6;
+        const match = state.absences.find(a=>{
+          if(a.peps_id !== p.id) return false;
+          if(a.statut!=='Approuvé' && a.statut!=='En attente') return false;
+          const d1=U.gristEpochToDate(a.date_debut), d2=U.gristEpochToDate(a.date_fin);
+          return d1 && d2 && date>=d1 && date<=d2;
+        });
+        let style='', title='', label='';
+        if(match){
+          const col = typeColor(match.type_id);
+          style = `background:${col}; opacity:${match.statut==='En attente'?0.45:0.9};`;
+          title = `${typeLabel(match.type_id)} — ${match.statut}${match.demi_journee?' (½ j)':''}`;
+          label = escapeHtml(typeLabel(match.type_id)).charAt(0);
+        }
+        cells += `<td class="cell ${we?'weekend':''}" style="${style}" title="${title}">${match?`<span style="color:#fff;font-weight:700;">${label}</span>`:''}</td>`;
+      }
+      return `<tr><td class="nom">${escapeHtml(p.prenom)} ${escapeHtml(p.nom)}</td>${cells}</tr>`;
+    }).join('');
+
+    const legend = sortedTypes().map(t=>`<span><span class="dot" style="background:${t.couleur}"></span>${escapeHtml(t.libelle)}</span>`).join('');
+
+    document.getElementById('panel-planning').innerHTML = `
+      <div class="panel-head">
+        <h1>Planning — ${monthNames[pl.m]} ${pl.y}</h1>
+        <div class="actions">
+          <button class="btn small" onclick="changePlanningMonth(-1)">← Mois préc.</button>
+          <button class="btn small" onclick="changePlanningMonth(1)">Mois suiv. →</button>
+          <label class="checkline"><input type="checkbox" ${pl.onlyActifs?'checked':''} onchange="togglePlanningActifs(this.checked)"> PEPS actifs seulement</label>
+          <button class="btn small" onclick="exportPlanningPDF()">⬇ Export PDF</button>
+        </div>
+      </div>
+      <div class="card cal-wrap">
+        ${peopleList.length===0 ? `<div class="empty"><div class="big">—</div>Aucun PEPS à afficher.</div>` : `
+        <table class="cal"><thead><tr><th></th>${headCells}</tr></thead><tbody>${bodyRows}</tbody></table>`}
+      </div>
+      <div class="legend" style="margin-top:12px;">${legend}<span><span class="dot" style="background:#999;opacity:.45"></span>En attente (transparence)</span></div>`;
+  }
+  window.changePlanningMonth = function(delta){
+    const pl = state.planning;
+    let m = pl.m + delta, y = pl.y;
+    if(m<0){ m=11; y--; } if(m>11){ m=0; y++; }
+    pl.m=m; pl.y=y; renderPlanning();
+  };
+  window.togglePlanningActifs = function(v){ state.planning.onlyActifs = v; renderPlanning(); };
+  window.exportPlanningPDF = function(){
+    const table = document.querySelector('#panel-planning table.cal');
+    if(!table) return;
+    const pl = state.planning;
+    const monthNames = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+    exportHtmlAsPDF(`Planning des absences PEPS — ${monthNames[pl.m]} ${pl.y}`, table.outerHTML, 'landscape');
+  };
+
+  /* =====================================================================
+     SOLDES
+     ===================================================================== */
+  function quotaFor(pepsId, typeId, year){
+    return state.quotas.find(q => q.peps_id===pepsId && q.type_id===typeId && q.annee===year);
+  }
+  function joursPris(pepsId, typeId, year){
+    return state.absences
+      .filter(a => a.peps_id===pepsId && a.type_id===typeId && a.statut==='Approuvé')
+      .filter(a => { const d=U.gristEpochToDate(a.date_debut); return d && d.getFullYear()===year; })
+      .reduce((sum,a)=> sum + (a.nb_jours||0), 0);
+  }
+  function renderSoldes(){
+    const year = state.soldesYear;
+    const typesDecompte = sortedTypes().filter(t=>t.decompte_solde);
+    const peopleList = activePeps();
+    let head = `<th>PEPS</th>` + typesDecompte.map(t=>`<th colspan="3" style="text-align:center">${escapeHtml(t.libelle)}</th>`).join('');
+    let subhead = `<th></th>` + typesDecompte.map(()=>`<th>Acquis</th><th>Pris</th><th>Restant</th>`).join('');
+    const rows = peopleList.map(p=>{
+      const cells = typesDecompte.map(t=>{
+        const q = quotaFor(p.id, t.id, year);
+        const acquis = q ? q.jours_acquis : 0;
+        const pris = joursPris(p.id, t.id, year);
+        const restant = acquis - pris;
+        return `<td><input type="number" step="0.5" value="${acquis}" style="width:64px" onchange="saveQuota(${p.id},${t.id},${year},this.value)"></td>
+                <td style="font-family:var(--font-mono)">${pris}</td>
+                <td style="font-family:var(--font-mono); color:${restant<0?'var(--rouge)':'inherit'}">${restant}</td>`;
+      }).join('');
+      return `<tr><td>${escapeHtml(p.prenom)} ${escapeHtml(p.nom)}</td>${cells}</tr>`;
+    }).join('');
+
+    document.getElementById('panel-soldes').innerHTML = `
+      <div class="panel-head">
+        <h1>Soldes — année ${year}</h1>
+        <div class="actions">
+          <button class="btn small" onclick="changeSoldesYear(-1)">← ${year-1}</button>
+          <button class="btn small" onclick="changeSoldesYear(1)">${year+1} →</button>
+          <button class="btn small" onclick="exportSoldesPDF()">⬇ Export PDF</button>
+        </div>
+      </div>
+      ${typesDecompte.length===0 ? `<div class="banner warn">Aucun type d'absence n'est configuré pour décompter un solde (voir panneau « Types d'absence »).</div>` : ''}
+      <div class="card" style="overflow-x:auto;">
+        ${peopleList.length===0 ? `<div class="empty"><div class="big">—</div>Aucun PEPS actif.</div>` : `
+        <table class="tbl" id="soldesTable"><thead><tr>${head}</tr><tr>${subhead}</tr></thead><tbody>${rows}</tbody></table>
+        <p class="hint" style="margin-top:8px;">« Acquis » est modifiable directement (quota de l'année pour ce PEPS et ce type). « Pris » = somme des absences approuvées de l'année. « Restant » = Acquis − Pris.</p>`}
+      </div>`;
+  }
+  window.changeSoldesYear = function(delta){ state.soldesYear += delta; renderSoldes(); };
+  window.saveQuota = async function(pepsId, typeId, year, val){
+    const num = parseFloat(val) || 0;
+    const existing = quotaFor(pepsId, typeId, year);
+    if(existing){ await U.updateRow('Quotas_PEPS', existing.id, {jours_acquis: num}); }
+    else{ await U.addRow('Quotas_PEPS', {peps_id: pepsId, type_id: typeId, annee: year, jours_acquis: num}); }
+    await loadAll(); renderSoldes();
+  };
+  window.exportSoldesPDF = function(){
+    const table = document.getElementById('soldesTable');
+    if(!table) return;
+    exportHtmlAsPDF(`Soldes d'absences PEPS — année ${state.soldesYear}`, table.outerHTML, 'portrait');
+  };
+
+  /* ---------- export PDF générique (window.open + document.write + print) ---------- */
+  function exportHtmlAsPDF(title, innerHtml, orientation){
+    const w = window.open('', '_blank');
+    if(!w){ alert("Le navigateur a bloqué l'ouverture de la fenêtre d'impression (popup). Autorisez les popups pour ce site."); return; }
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+      <style>
+        @page { size: A4 ${orientation||'portrait'}; margin: 12mm; }
+        body{ font-family: Arial, Helvetica, sans-serif; color:#1B2630; }
+        h1{ font-size:15px; margin:0 0 4px 0; }
+        .meta{ font-size:10px; color:#5A6B7A; margin-bottom:14px; }
+        table{ border-collapse:collapse; width:100%; font-size:9px; }
+        th, td{ border:1px solid #aaa; padding:3px 5px; text-align:left; }
+        th{ background:#EEF2F6; }
+        td.nom{ position:static; }
+      </style></head><body>
+      <h1>${escapeHtml(title)}</h1>
+      <div class="meta">INRAE — Pôles Finances et RH — généré le ${new Date().toLocaleString('fr-FR')}</div>
+      ${innerHtml}
+      </body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(()=>{ w.print(); }, 350);
+  }
+
+  /* =====================================================================
+     RÉFÉRENTIEL PEPS
+     ===================================================================== */
+  function renderReferentiel(){
+    const list = state.peps.slice().sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+    const rows = list.map(p=>`
+      <tr>
+        <td>${escapeHtml(p.prenom)} ${escapeHtml(p.nom)}</td>
+        <td>${escapeHtml(p.unite||'')}</td>
+        <td>${escapeHtml(p.statut_peps||'')}</td>
+        <td>${escapeHtml(p.email||'')}</td>
+        <td>${U.fmtDateShort(U.gristEpochToDate(p.date_debut_accueil))} → ${U.fmtDateShort(U.gristEpochToDate(p.date_fin_accueil))}</td>
+        <td>${p.actif?'<span class="badge statut-approuve">Actif</span>':'<span class="badge statut-annule">Inactif</span>'}</td>
+        <td>
+          <button class="btn small" onclick="openPepsModal(${p.id})">Modifier</button>
+          <button class="btn small danger" onclick="deletePeps(${p.id})">Suppr.</button>
+        </td>
+      </tr>`).join('');
+    document.getElementById('panel-referentiel').innerHTML = `
+      <div class="panel-head"><h1>Référentiel PEPS</h1>
+        <div class="actions"><button class="btn primary" onclick="openPepsModal(null)">+ Ajouter un PEPS</button></div>
+      </div>
+      <div class="card" style="overflow-x:auto;">
+        ${list.length===0 ? `<div class="empty"><div class="big">+</div>Aucun PEPS enregistré. Ajoutez le premier.</div>` :
+        `<table class="tbl"><thead><tr><th>Nom</th><th>Unité</th><th>Statut PEPS</th><th>Email</th><th>Période d'accueil</th><th>État</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table>`}
+      </div>`;
+  }
+  window.openPepsModal = function(id){
+    const p = id ? pepsById(id) : {nom:'',prenom:'',unite:'',statut_peps:'Doctorant externe',email:'',date_debut_accueil:null,date_fin_accueil:null,actif:true,commentaire:''};
+    const statutOptions = ['Doctorant externe','Chercheur invité','Stagiaire non gratifié','Personnel mis à disposition','Retraité - mission','Autre'];
+    openModal(`
+      <h2>${id?'Modifier le PEPS':'Ajouter un PEPS'}</h2>
+      <div class="grid grid-cols-2">
+        <div class="field"><label>Prénom</label><input type="text" id="m_prenom" value="${escapeHtml(p.prenom)}"></div>
+        <div class="field"><label>Nom</label><input type="text" id="m_nom" value="${escapeHtml(p.nom)}"></div>
+      </div>
+      <div class="field"><label>Unité</label><input type="text" id="m_unite" value="${escapeHtml(p.unite)}"></div>
+      <div class="field"><label>Statut PEPS</label>
+        <select id="m_statut">${statutOptions.map(s=>`<option ${p.statut_peps===s?'selected':''}>${s}</option>`).join('')}</select>
+      </div>
+      <div class="field"><label>Email</label><input type="email" id="m_email" value="${escapeHtml(p.email)}"></div>
+      <div class="grid grid-cols-2">
+        <div class="field"><label>Début accueil</label><input type="date" id="m_debut" value="${U.dateToInputStr(U.gristEpochToDate(p.date_debut_accueil))}"></div>
+        <div class="field"><label>Fin accueil</label><input type="date" id="m_fin" value="${U.dateToInputStr(U.gristEpochToDate(p.date_fin_accueil))}"></div>
+      </div>
+      <div class="field"><label class="checkline"><input type="checkbox" id="m_actif" ${p.actif?'checked':''}> Actif</label></div>
+      <div class="field"><label>Commentaire</label><textarea id="m_comment">${escapeHtml(p.commentaire||'')}</textarea></div>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button class="btn" onclick="closeModal()">Annuler</button>
+        <button class="btn primary" onclick="savePeps(${id||'null'})">Enregistrer</button>
+      </div>`);
+  };
+  window.savePeps = async function(id){
+    const fields = {
+      prenom: document.getElementById('m_prenom').value.trim(),
+      nom: document.getElementById('m_nom').value.trim(),
+      unite: document.getElementById('m_unite').value.trim(),
+      statut_peps: document.getElementById('m_statut').value,
+      email: document.getElementById('m_email').value.trim(),
+      date_debut_accueil: U.dateToGristEpoch(U.inputToDate(document.getElementById('m_debut').value) || new Date()),
+      date_fin_accueil: document.getElementById('m_fin').value ? U.dateToGristEpoch(U.inputToDate(document.getElementById('m_fin').value)) : 0,
+      actif: document.getElementById('m_actif').checked,
+      commentaire: document.getElementById('m_comment').value.trim()
+    };
+    if(!fields.nom){ alert('Le nom est obligatoire.'); return; }
+    if(id) await U.updateRow('PEPS', id, fields); else await U.addRow('PEPS', fields);
+    closeModal(); await loadAll(); renderReferentiel();
+  };
+  window.deletePeps = async function(id){
+    const nb = state.absences.filter(a=>a.peps_id===id).length;
+    const msg = nb>0 ? `Ce PEPS a ${nb} absence(s) enregistrée(s) qui resteront en base mais sans référence valide. Supprimer quand même ?` : 'Supprimer ce PEPS ?';
+    if(!confirm(msg)) return;
+    await U.removeRow('PEPS', id);
+    await loadAll(); renderReferentiel();
+  };
+
+  /* =====================================================================
+     TYPES D'ABSENCE
+     ===================================================================== */
+  function renderTypes(){
+    const list = sortedTypes();
+    const rows = list.map(t=>`
+      <tr>
+        <td><span class="dot" style="background:${t.couleur}"></span></td>
+        <td>${escapeHtml(t.libelle)}</td>
+        <td>${t.decompte_solde?'Oui':'Non'}</td>
+        <td>${t.justificatif_requis?'Oui':'Non'}</td>
+        <td>${t.ordre}</td>
+        <td>
+          <button class="btn small" onclick="openTypeModal(${t.id})">Modifier</button>
+          <button class="btn small danger" onclick="deleteType(${t.id})">Suppr.</button>
+        </td>
+      </tr>`).join('');
+    document.getElementById('panel-types').innerHTML = `
+      <div class="panel-head"><h1>Types d'absence</h1>
+        <div class="actions"><button class="btn primary" onclick="openTypeModal(null)">+ Ajouter un type</button></div>
+      </div>
+      <div class="card">
+        <table class="tbl"><thead><tr><th></th><th>Libellé</th><th>Décompte un solde</th><th>Justificatif requis</th><th>Ordre</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </div>`;
+  }
+  window.openTypeModal = function(id){
+    const t = id ? typeById(id) : {libelle:'',decompte_solde:false,couleur:'#0057A8',justificatif_requis:false,ordre:(state.types.length+1)};
+    openModal(`
+      <h2>${id?'Modifier le type':'Ajouter un type'}</h2>
+      <div class="field"><label>Libellé</label><input type="text" id="t_libelle" value="${escapeHtml(t.libelle)}"></div>
+      <div class="field"><label>Couleur</label><input type="color" id="t_couleur" value="${t.couleur}"></div>
+      <div class="field"><label class="checkline"><input type="checkbox" id="t_decompte" ${t.decompte_solde?'checked':''}> Décompte un solde (congés/RTT)</label></div>
+      <div class="field"><label class="checkline"><input type="checkbox" id="t_justif" ${t.justificatif_requis?'checked':''}> Justificatif requis</label></div>
+      <div class="field"><label>Ordre d'affichage</label><input type="number" id="t_ordre" value="${t.ordre}"></div>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button class="btn" onclick="closeModal()">Annuler</button>
+        <button class="btn primary" onclick="saveType(${id||'null'})">Enregistrer</button>
+      </div>`);
+  };
+  window.saveType = async function(id){
+    const fields = {
+      libelle: document.getElementById('t_libelle').value.trim(),
+      couleur: document.getElementById('t_couleur').value,
+      decompte_solde: document.getElementById('t_decompte').checked,
+      justificatif_requis: document.getElementById('t_justif').checked,
+      ordre: parseInt(document.getElementById('t_ordre').value)||1
+    };
+    if(!fields.libelle){ alert('Le libellé est obligatoire.'); return; }
+    if(id) await U.updateRow('Types_Absence', id, fields); else await U.addRow('Types_Absence', fields);
+    closeModal(); await loadAll(); renderTypes();
+  };
+  window.deleteType = async function(id){
+    const nb = state.absences.filter(a=>a.type_id===id).length;
+    const msg = nb>0 ? `Ce type est utilisé par ${nb} absence(s) qui resteront en base sans référence valide. Supprimer quand même ?` : 'Supprimer ce type ?';
+    if(!confirm(msg)) return;
+    await U.removeRow('Types_Absence', id);
+    await loadAll(); renderTypes();
+  };
+
+  window._pepsApp = { state, pepsById, typeById, pepsLabel, typeLabel, typeColor, sortedTypes, activePeps,
+    escapeHtml, statutClass, openModal, loadAll, renderCurrentPanel, renderDashboard, renderSaisie };
+})();
+</script>
+
+</body>
+</html>
