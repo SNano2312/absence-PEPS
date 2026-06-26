@@ -629,15 +629,17 @@
   };
 
   /* ---------- démarrage ---------- */
-  // Détection du mode : on lit d'abord la table PEPS telle que Grist la renvoie
-  // pour la personne connectée. Si des règles d'accès (Access Rules) limitent
-  // la lecture à « sa propre ligne », une seule ligne revient : on bascule en
-  // mode PEPS restreint. Un gestionnaire (Owner, ou listé dans Gestionnaires)
-  // voit toutes les lignes. C'est la même technique que celle documentée par
-  // la communauté Grist pour détecter l'utilisateur courant dans un widget.
-  // ⚠️ Cette détection est une commodité d'affichage : la VRAIE sécurité doit
-  // venir des Access Rules configurées dans Grist (voir le guide fourni),
-  // pas de ce code JS qui ne fait qu'adapter l'interface en conséquence.
+  // Détection du mode : on teste l'accès à la table Quotas_PEPS, réservée aux
+  // gestionnaires par les Access Rules (R/U/C/D tous refusés pour les autres).
+  // - Un Owner / gestionnaire y a accès → mode gestionnaire (interface complète).
+  // - Un PEPS (Editor restreint) s'en voit refuser l'accès → mode PEPS restreint,
+  //   et sa propre ligne est retrouvée via la table PEPS (qui, pour lui, ne
+  //   renvoie que sa propre ligne grâce aux Access Rules).
+  // On ne se base PLUS sur le nombre de lignes de la table PEPS : avec un seul
+  // PEPS enregistré, un gestionnaire ne verrait lui aussi qu'une ligne, ce qui
+  // déclenchait à tort le mode PEPS pour lui (bug constaté en pratique).
+  // ⚠️ Cette détection reste une commodité d'affichage : la VRAIE sécurité vient
+  // des Access Rules configurées dans Grist, pas de ce code JS.
   async function boot(){
     try{
       let pepsRows;
@@ -649,13 +651,31 @@
         throw e;
       }
 
-      if(pepsRows.length === 1){
-        state.mode = 'peps';
-        state.moi = pepsRows[0];
-      } else {
+      let isGestionnaire = true;
+      try{ await grist.docApi.fetchTable('Quotas_PEPS'); }
+      catch(e){ isGestionnaire = false; }
+
+      if(isGestionnaire){
         state.mode = 'gestionnaire';
         const missing = await U.checkSchema();
         if(missing.length){ renderSetup(missing); return; }
+      } else {
+        state.mode = 'peps';
+        if(pepsRows.length !== 1){
+          // Ni 0 ni plusieurs lignes ne devraient arriver ici si les règles
+          // sont bien configurées : 0 = l'email du PEPS connecté ne correspond
+          // à aucune ligne de la table PEPS (faute de frappe, PEPS pas encore
+          // ajouté…). On affiche un message clair plutôt qu'une page vide.
+          document.getElementById('panel-setup').classList.add('active');
+          document.getElementById('panel-setup').innerHTML = `
+            <div class="banner err"><div>❌</div><div>
+              <strong>Aucune fiche PEPS retrouvée pour votre compte.</strong><br>
+              Contactez votre gestionnaire : votre email de connexion Grist doit correspondre
+              exactement à l'email renseigné dans la table PEPS.
+            </div></div>`;
+          return;
+        }
+        state.moi = pepsRows[0];
       }
 
       buildSidebar();
