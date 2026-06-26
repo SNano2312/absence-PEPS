@@ -195,6 +195,7 @@
 
   <div class="topbar">
     <h1>Gestion des absences — PEPS</h1>
+    <span class="sub" id="modeBadge"></span>
     <span class="sub" id="lastSync">—</span>
     <span class="status-pill wait" id="statusPill">Connexion…</span>
     <button class="icon-btn" onclick="manualRefresh()" title="Rafraîchir">⟳ Rafraîchir</button>
@@ -203,21 +204,13 @@
   </div>
 
   <div class="body-row">
-    <div class="sidebar no-print" id="sidebar">
-      <div class="nav-item active" data-panel="dashboard" onclick="showPanel('dashboard')"><span class="ic">📊</span> Tableau de bord</div>
-      <div class="nav-item" data-panel="saisie" onclick="showPanel('saisie')"><span class="ic">📝</span> Saisie</div>
-      <div class="nav-item" data-panel="validation" onclick="showPanel('validation')"><span class="ic">✅</span> Validation</div>
-      <div class="nav-item" data-panel="planning" onclick="showPanel('planning')"><span class="ic">📅</span> Planning</div>
-      <div class="nav-item" data-panel="soldes" onclick="showPanel('soldes')"><span class="ic">⏳</span> Soldes</div>
-      <div class="nav-sep"></div>
-      <div class="nav-item" data-panel="referentiel" onclick="showPanel('referentiel')"><span class="ic">👤</span> PEPS (référentiel)</div>
-      <div class="nav-item" data-panel="types" onclick="showPanel('types')"><span class="ic">🏷️</span> Types d'absence</div>
-    </div>
+    <div class="sidebar no-print" id="sidebar"></div>
 
     <main id="main">
       <div class="panel" id="panel-setup"></div>
       <div class="panel" id="panel-dashboard"></div>
       <div class="panel" id="panel-saisie"></div>
+      <div class="panel" id="panel-mesdemandes"></div>
       <div class="panel" id="panel-validation"></div>
       <div class="panel" id="panel-planning"></div>
       <div class="panel" id="panel-soldes"></div>
@@ -226,6 +219,7 @@
     </main>
   </div>
 </div>
+
 
 <div id="modalRoot"></div>
 
@@ -377,6 +371,10 @@
      3. ACCÈS GRIST — schéma des tables + CRUD générique
      --------------------------------------------------------------------- */
   const SCHEMA = {
+    Gestionnaires: [
+      {id:'email', type:'Text'},
+      {id:'nom', type:'Text'}
+    ],
     PEPS: [
       {id:'nom', type:'Text'},
       {id:'prenom', type:'Text'},
@@ -489,7 +487,9 @@
     validationFilter: 'attente', // 'attente' | 'tous'
     soldesYear: new Date().getFullYear(),
     planning: (function(){ const n=new Date(); return {y:n.getFullYear(), m:n.getMonth(), onlyActifs:true}; })(),
-    ready: false
+    ready: false,
+    mode: 'gestionnaire', // 'gestionnaire' | 'peps' — déterminé au démarrage, voir boot()
+    moi: null              // ligne PEPS de la personne connectée, en mode 'peps'
   };
 
   /* ---------- helpers de lookup ---------- */
@@ -521,6 +521,32 @@
     document.getElementById('lastSync').textContent = 'maj ' + new Date().toLocaleTimeString('fr-FR');
   }
 
+  /* ---------- sidebar (différente selon le mode) ---------- */
+  const NAV_GESTIONNAIRE = [
+    {p:'dashboard', ic:'📊', lbl:'Tableau de bord'},
+    {p:'saisie', ic:'📝', lbl:'Saisie'},
+    {p:'validation', ic:'✅', lbl:'Validation'},
+    {p:'planning', ic:'📅', lbl:'Planning'},
+    {p:'soldes', ic:'⏳', lbl:'Soldes'},
+    {sep:true},
+    {p:'referentiel', ic:'👤', lbl:'PEPS (référentiel)'},
+    {p:'types', ic:'🏷️', lbl:"Types d'absence"}
+  ];
+  const NAV_PEPS = [
+    {p:'saisie', ic:'📝', lbl:'Nouvelle demande'},
+    {p:'mesdemandes', ic:'📋', lbl:'Mes demandes'}
+  ];
+  function buildSidebar(){
+    const items = state.mode === 'peps' ? NAV_PEPS : NAV_GESTIONNAIRE;
+    document.getElementById('sidebar').innerHTML = items.map(it =>
+      it.sep ? `<div class="nav-sep"></div>`
+             : `<div class="nav-item" data-panel="${it.p}" onclick="showPanel('${it.p}')"><span class="ic">${it.ic}</span> ${it.lbl}</div>`
+    ).join('');
+    document.getElementById('modeBadge').textContent = state.mode === 'peps'
+      ? `PEPS — ${state.moi ? state.moi.prenom+' '+state.moi.nom : ''}`
+      : 'Mode gestionnaire';
+  }
+
   /* ---------- navigation entre panneaux ---------- */
   window.showPanel = function(name){
     document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.panel === name));
@@ -534,21 +560,31 @@
     if(!state.ready) return;
     const fns = {
       dashboard: renderDashboard, saisie: renderSaisie, validation: renderValidation,
-      planning: renderPlanning, soldes: renderSoldes, referentiel: renderReferentiel, types: renderTypes
+      planning: renderPlanning, soldes: renderSoldes, referentiel: renderReferentiel, types: renderTypes,
+      mesdemandes: renderMesDemandes
     };
     const fn = fns[state.currentPanel];
     if(fn) fn();
   }
 
   /* ---------- chargement des données ---------- */
+  // En mode 'peps', les règles d'accès Grist (Access Rules) filtrent déjà les
+  // lignes renvoyées : PEPS ne reçoit que sa propre ligne dans PEPS, et que ses
+  // propres demandes dans Absences_PEPS. On ne charge donc pas Quotas_PEPS
+  // (réservé aux gestionnaires) ni un Référentiel complet.
   async function loadAll(){
-    const [peps, types, quotas, absences] = await Promise.all([
-      U.fetchRows('PEPS'), U.fetchRows('Types_Absence'), U.fetchRows('Quotas_PEPS'), U.fetchRows('Absences_PEPS')
-    ]);
-    state.peps = peps;
-    state.types = types;
-    state.quotas = quotas;
-    state.absences = absences;
+    if(state.mode === 'peps'){
+      const [peps, types, absences] = await Promise.all([
+        U.fetchRows('PEPS'), U.fetchRows('Types_Absence'), U.fetchRows('Absences_PEPS')
+      ]);
+      state.peps = peps; state.types = types; state.absences = absences; state.quotas = [];
+      state.moi = peps.find(p => p.id === (state.moi && state.moi.id)) || peps[0] || state.moi;
+    } else {
+      const [peps, types, quotas, absences] = await Promise.all([
+        U.fetchRows('PEPS'), U.fetchRows('Types_Absence'), U.fetchRows('Quotas_PEPS'), U.fetchRows('Absences_PEPS')
+      ]);
+      state.peps = peps; state.types = types; state.quotas = quotas; state.absences = absences;
+    }
     setSync();
   }
   window.manualRefresh = async function(){
@@ -557,7 +593,7 @@
     catch(e){ setStatus('err','Erreur'); console.error(e); }
   };
 
-  /* ---------- setup initial (création des tables si absentes) ---------- */
+  /* ---------- setup initial (création des tables si absentes) — gestionnaires uniquement ---------- */
   function renderSetup(missing){
     document.getElementById('panel-setup').innerHTML = `
       <div class="banner warn">
@@ -565,19 +601,18 @@
         <div>
           <strong>Structure Grist manquante.</strong><br>
           Les tables suivantes n'existent pas encore dans ce document : <code>${missing.join(', ')}</code>.<br>
-          Cliquez sur le bouton ci-dessous pour les créer automatiquement (4 types d'absence de base seront
-          ajoutés : Congés payés, RTT, Arrêt, Mission). Cette opération est sûre et ne touche à aucune autre table.
+          Cliquez sur le bouton ci-dessous pour les créer automatiquement. Cette opération est sûre et ne touche
+          à aucune autre table. Réservé aux personnes ayant les droits d'administration (Owner) du document —
+          si le bouton échoue, c'est probablement un problème de droits.
         </div>
       </div>
       <button class="btn primary" onclick="runSetup()">Créer la structure dans Grist</button>
       <p class="hint" style="margin-top:14px;">
-        Si ce bouton échoue (droits d'accès insuffisants), demandez à un administrateur du document de créer les
-        4 tables manuellement avec les colonnes exactes listées dans le code source du widget (section SCHEMA),
-        ou ouvrez-moi à nouveau en lui expliquant l'erreur affichée.
+        Une fois les tables créées, pensez à configurer les <strong>règles d'accès (Access Rules)</strong> de Grist
+        pour restreindre ce que voient les PEPS (voir la documentation fournie avec ce widget).
       </p>`;
     document.querySelectorAll('.panel').forEach(el => el.classList.remove('active'));
     document.getElementById('panel-setup').classList.add('active');
-    document.querySelectorAll('.nav-item').forEach(el => el.style.opacity = .4);
   }
   window.runSetup = async function(){
     try{
@@ -594,15 +629,40 @@
   };
 
   /* ---------- démarrage ---------- */
+  // Détection du mode : on lit d'abord la table PEPS telle que Grist la renvoie
+  // pour la personne connectée. Si des règles d'accès (Access Rules) limitent
+  // la lecture à « sa propre ligne », une seule ligne revient : on bascule en
+  // mode PEPS restreint. Un gestionnaire (Owner, ou listé dans Gestionnaires)
+  // voit toutes les lignes. C'est la même technique que celle documentée par
+  // la communauté Grist pour détecter l'utilisateur courant dans un widget.
+  // ⚠️ Cette détection est une commodité d'affichage : la VRAIE sécurité doit
+  // venir des Access Rules configurées dans Grist (voir le guide fourni),
+  // pas de ce code JS qui ne fait qu'adapter l'interface en conséquence.
   async function boot(){
     try{
-      const missing = await U.checkSchema();
-      if(missing.length){ renderSetup(missing); return; }
-      document.querySelectorAll('.nav-item').forEach(el => el.style.opacity = 1);
+      let pepsRows;
+      try{ pepsRows = await U.fetchRows('PEPS'); }
+      catch(e){
+        // La table PEPS n'existe probablement pas encore : flux de création.
+        const missing = await U.checkSchema();
+        if(missing.length){ renderSetup(missing); return; }
+        throw e;
+      }
+
+      if(pepsRows.length === 1){
+        state.mode = 'peps';
+        state.moi = pepsRows[0];
+      } else {
+        state.mode = 'gestionnaire';
+        const missing = await U.checkSchema();
+        if(missing.length){ renderSetup(missing); return; }
+      }
+
+      buildSidebar();
       await loadAll();
       state.ready = true;
       setStatus('ok','Connecté');
-      window.showPanel('dashboard');
+      window.showPanel(state.mode === 'peps' ? 'saisie' : 'dashboard');
     }catch(e){
       console.error(e);
       setStatus('err','Erreur de connexion');
@@ -677,19 +737,23 @@
      SAISIE
      ===================================================================== */
   function renderSaisie(){
-    const peps = activePeps();
+    const isPeps = state.mode === 'peps';
+    const peps = isPeps ? (state.moi ? [state.moi] : []) : activePeps();
     const types = sortedTypes();
     document.getElementById('panel-saisie').innerHTML = `
       <div class="panel-head"><h1>Nouvelle demande d'absence</h1></div>
       <div class="card" style="max-width:560px;">
-        ${peps.length===0 ? `<div class="banner warn">Aucun PEPS actif. Ajoutez d'abord un PEPS dans le référentiel.</div>` : ''}
+        ${peps.length===0 ? `<div class="banner warn">${isPeps ? "Votre fiche PEPS n'a pas été retrouvée — contactez votre gestionnaire." : "Aucun PEPS actif. Ajoutez d'abord un PEPS dans le référentiel."}</div>` : ''}
         ${types.length===0 ? `<div class="banner warn">Aucun type d'absence configuré.</div>` : ''}
         <form id="formSaisie" onsubmit="return submitSaisie(event)">
           <div class="field"><label>PEPS</label>
-            <select id="s_peps" required>
-              <option value="">— choisir —</option>
-              ${peps.map(p=>`<option value="${p.id}">${escapeHtml(p.prenom)} ${escapeHtml(p.nom)} (${escapeHtml(p.unite||'')})</option>`).join('')}
-            </select>
+            ${isPeps
+              ? `<input type="text" value="${escapeHtml(state.moi ? state.moi.prenom+' '+state.moi.nom : '')}" disabled>
+                 <input type="hidden" id="s_peps" value="${state.moi ? state.moi.id : ''}">`
+              : `<select id="s_peps" required>
+                  <option value="">— choisir —</option>
+                  ${peps.map(p=>`<option value="${p.id}">${escapeHtml(p.prenom)} ${escapeHtml(p.nom)} (${escapeHtml(p.unite||'')})</option>`).join('')}
+                </select>`}
           </div>
           <div class="field"><label>Type d'absence</label>
             <select id="s_type" required onchange="updateSaisiePreview()">
@@ -730,7 +794,7 @@
   };
   window.submitSaisie = async function(ev){
     ev.preventDefault();
-    const pepsId = +document.getElementById('s_peps').value;
+    const pepsId = state.mode === 'peps' ? (state.moi && state.moi.id) : +document.getElementById('s_peps').value;
     const typeId = +document.getElementById('s_type').value;
     const d1 = U.inputToDate(document.getElementById('s_debut').value);
     const d2 = U.inputToDate(document.getElementById('s_fin').value);
@@ -755,11 +819,32 @@
         `<div class="banner info">✓ Demande enregistrée (${nbJours} j) — en attente de validation.</div>`);
     }catch(e){
       console.error(e);
-      alert("Erreur lors de l enregistrement : " + (e.message||e));
+      alert("Erreur lors de l'enregistrement : " + (e.message||e));
       btn.disabled=false; btn.textContent='Enregistrer la demande';
     }
     return false;
   };
+
+  /* =====================================================================
+     MES DEMANDES (mode PEPS — lecture seule)
+     ===================================================================== */
+  function renderMesDemandes(){
+    const mine = state.absences.slice().sort((a,b)=> (b.date_creation||0)-(a.date_creation||0));
+    const rows = mine.map(a=>`
+      <tr>
+        <td><span class="dot" style="background:${typeColor(a.type_id)}"></span> ${escapeHtml(typeLabel(a.type_id))}</td>
+        <td>${U.fmtDateShort(U.gristEpochToDate(a.date_debut))} → ${U.fmtDateShort(U.gristEpochToDate(a.date_fin))}${a.demi_journee?` (½ j ${escapeHtml(a.periode_demi||'')})`:''}</td>
+        <td style="font-family:var(--font-mono)">${a.nb_jours}</td>
+        <td>${escapeHtml(a.commentaire||'')}${a.motif_refus?`<br><span class="hint" style="color:var(--rouge)">Motif refus : ${escapeHtml(a.motif_refus)}</span>`:''}</td>
+        <td><span class="badge ${statutClass(a.statut)}">${escapeHtml(a.statut)}</span></td>
+      </tr>`).join('');
+    document.getElementById('panel-mesdemandes').innerHTML = `
+      <div class="panel-head"><h1>Mes demandes</h1></div>
+      <div class="card">
+        ${rows ? `<table class="tbl"><thead><tr><th>Type</th><th>Période</th><th>Jrs</th><th>Commentaire</th><th>Statut</th></tr></thead>
+        <tbody>${rows}</tbody></table>` : `<div class="empty"><div class="big">—</div>Vous n'avez encore déposé aucune demande.</div>`}
+      </div>`;
+  }
 
   /* =====================================================================
      VALIDATION
