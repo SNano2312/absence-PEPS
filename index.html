@@ -919,11 +919,11 @@
     const validateur = localStorage.getItem('peps_validateur') || '';
     if(!validateur.trim()){ alert("Merci de renseigner votre nom dans le champ « Validateur » avant de valider."); return; }
     try{
-      await U.updateRow('Absences_PEPS', id, {statut:'Approuvé', valideur, date_validation: U.nowEpoch()});
+      await U.updateRow('Absences_PEPS', id, {statut:'Approuvé', valideur: validateur, date_validation: U.nowEpoch()});
       await loadAll(); renderValidation();
     }catch(e){
       console.error(e);
-      alert("Échec de l'approbation : " + (e.message||e) + "\n\nVérifiez la règle d'accès « Owner → tout autoriser » sur la table Absences_PEPS.");
+      alert("Échec de l'approbation : " + (e.message||e));
     }
   };
   window.cancelAbsence = async function(id){
@@ -950,7 +950,7 @@
     if(!motif){ alert('Le motif du refus est obligatoire.'); return; }
     const validateur = localStorage.getItem('peps_validateur') || '';
     try{
-      await U.updateRow('Absences_PEPS', id, {statut:'Refusé', motif_refus: motif, valideur, date_validation: U.nowEpoch()});
+      await U.updateRow('Absences_PEPS', id, {statut:'Refusé', motif_refus: motif, valideur: validateur, date_validation: U.nowEpoch()});
       closeModal();
       await loadAll(); renderValidation();
     }catch(e){
