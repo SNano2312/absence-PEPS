@@ -211,6 +211,7 @@
       <div class="panel" id="panel-dashboard"></div>
       <div class="panel" id="panel-saisie"></div>
       <div class="panel" id="panel-mesdemandes"></div>
+      <div class="panel" id="panel-monsolde"></div>
       <div class="panel" id="panel-validation"></div>
       <div class="panel" id="panel-planning"></div>
       <div class="panel" id="panel-soldes"></div>
@@ -534,7 +535,8 @@
   ];
   const NAV_PEPS = [
     {p:'saisie', ic:'📝', lbl:'Nouvelle demande'},
-    {p:'mesdemandes', ic:'📋', lbl:'Mes demandes'}
+    {p:'mesdemandes', ic:'📋', lbl:'Mes demandes'},
+    {p:'monsolde', ic:'⏳', lbl:'Mon solde'}
   ];
   function buildSidebar(){
     const items = state.mode === 'peps' ? NAV_PEPS : NAV_GESTIONNAIRE;
@@ -561,7 +563,7 @@
     const fns = {
       dashboard: renderDashboard, saisie: renderSaisie, validation: renderValidation,
       planning: renderPlanning, soldes: renderSoldes, referentiel: renderReferentiel, types: renderTypes,
-      mesdemandes: renderMesDemandes
+      mesdemandes: renderMesDemandes, monsolde: renderMonSolde
     };
     const fn = fns[state.currentPanel];
     if(fn) fn();
@@ -569,15 +571,15 @@
 
   /* ---------- chargement des données ---------- */
   // En mode 'peps', les règles d'accès Grist (Access Rules) filtrent déjà les
-  // lignes renvoyées : PEPS ne reçoit que sa propre ligne dans PEPS, et que ses
-  // propres demandes dans Absences_PEPS. On ne charge donc pas Quotas_PEPS
-  // (réservé aux gestionnaires) ni un Référentiel complet.
+  // lignes renvoyées : PEPS ne reçoit que sa propre ligne dans PEPS, que ses
+  // propres demandes dans Absences_PEPS, et que ses propres quotas dans
+  // Quotas_PEPS (lecture seule). Pas de Référentiel complet pour autant.
   async function loadAll(){
     if(state.mode === 'peps'){
-      const [peps, types, absences] = await Promise.all([
-        U.fetchRows('PEPS'), U.fetchRows('Types_Absence'), U.fetchRows('Absences_PEPS')
+      const [peps, types, absences, quotas] = await Promise.all([
+        U.fetchRows('PEPS'), U.fetchRows('Types_Absence'), U.fetchRows('Absences_PEPS'), U.fetchRows('Quotas_PEPS')
       ]);
-      state.peps = peps; state.types = types; state.absences = absences; state.quotas = [];
+      state.peps = peps; state.types = types; state.absences = absences; state.quotas = quotas;
       state.moi = peps.find(p => p.id === (state.moi && state.moi.id)) || peps[0] || state.moi;
     } else {
       const [peps, types, quotas, absences] = await Promise.all([
@@ -629,13 +631,16 @@
   };
 
   /* ---------- démarrage ---------- */
-  // Détection du mode : on teste l'accès à la table Quotas_PEPS, réservée aux
-  // gestionnaires par les Access Rules (R/U/C/D tous refusés pour les autres).
+  // Détection du mode : on teste l'accès à la table Gestionnaires, réservée
+  // exclusivement aux gestionnaires par les Access Rules (R/U/C/D tous refusés
+  // pour les autres). On n'utilise PAS Quotas_PEPS pour ce test : les PEPS y
+  // ont désormais un accès en lecture limité à leurs propres lignes (pour voir
+  // leur solde), ce qui rendrait ce test ambigu.
   // - Un Owner / gestionnaire y a accès → mode gestionnaire (interface complète).
   // - Un PEPS (Editor restreint) s'en voit refuser l'accès → mode PEPS restreint,
   //   et sa propre ligne est retrouvée via la table PEPS (qui, pour lui, ne
   //   renvoie que sa propre ligne grâce aux Access Rules).
-  // On ne se base PLUS sur le nombre de lignes de la table PEPS : avec un seul
+  // On ne se base PAS sur le nombre de lignes de la table PEPS : avec un seul
   // PEPS enregistré, un gestionnaire ne verrait lui aussi qu'une ligne, ce qui
   // déclenchait à tort le mode PEPS pour lui (bug constaté en pratique).
   // ⚠️ Cette détection reste une commodité d'affichage : la VRAIE sécurité vient
@@ -652,7 +657,7 @@
       }
 
       let isGestionnaire = true;
-      try{ await grist.docApi.fetchTable('Quotas_PEPS'); }
+      try{ await grist.docApi.fetchTable('Gestionnaires'); }
       catch(e){ isGestionnaire = false; }
 
       if(isGestionnaire){
@@ -863,6 +868,40 @@
       <div class="card">
         ${rows ? `<table class="tbl"><thead><tr><th>Type</th><th>Période</th><th>Jrs</th><th>Commentaire</th><th>Statut</th></tr></thead>
         <tbody>${rows}</tbody></table>` : `<div class="empty"><div class="big">—</div>Vous n'avez encore déposé aucune demande.</div>`}
+      </div>`;
+  }
+
+  /* ---------- MON SOLDE (mode PEPS — lecture seule) ---------- */
+  // Réutilise quotaFor()/joursPris() définies plus bas dans le panneau Soldes
+  // gestionnaire (déclarations de fonction = hoistées dans toute cette IIFE).
+  function renderMonSolde(){
+    const year = state.soldesYear;
+    const moi = state.moi;
+    const typesDecompte = sortedTypes().filter(t=>t.decompte_solde);
+    const rows = typesDecompte.map(t=>{
+      const q = moi ? quotaFor(moi.id, t.id, year) : null;
+      const acquis = q ? q.jours_acquis : 0;
+      const pris = moi ? joursPris(moi.id, t.id, year) : 0;
+      const restant = acquis - pris;
+      return `<tr>
+        <td><span class="dot" style="background:${t.couleur}"></span> ${escapeHtml(t.libelle)}</td>
+        <td style="font-family:var(--font-mono)">${acquis}</td>
+        <td style="font-family:var(--font-mono)">${pris}</td>
+        <td style="font-family:var(--font-mono); color:${restant<0?'var(--rouge)':'inherit'}">${restant}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('panel-monsolde').innerHTML = `
+      <div class="panel-head">
+        <h1>Mon solde — année ${year}</h1>
+        <div class="actions">
+          <button class="btn small" onclick="changeSoldesYear(-1)">← ${year-1}</button>
+          <button class="btn small" onclick="changeSoldesYear(1)">${year+1} →</button>
+        </div>
+      </div>
+      <div class="card">
+        ${typesDecompte.length===0 ? `<div class="empty"><div class="big">—</div>Aucun type d'absence ne décompte de solde pour l'instant.</div>` : `
+        <table class="tbl"><thead><tr><th>Type</th><th>Acquis</th><th>Pris</th><th>Restant</th></tr></thead><tbody>${rows}</tbody></table>
+        <p class="hint" style="margin-top:8px;">« Pris » = vos absences déjà approuvées sur l'année. Pour toute correction du solde « Acquis », contactez votre gestionnaire.</p>`}
       </div>`;
   }
 
@@ -1078,7 +1117,7 @@
         <p class="hint" style="margin-top:8px;">« Acquis » est modifiable directement (quota de l'année pour ce PEPS et ce type). « Pris » = somme des absences approuvées de l'année. « Restant » = Acquis − Pris.</p>`}
       </div>`;
   }
-  window.changeSoldesYear = function(delta){ state.soldesYear += delta; renderSoldes(); };
+  window.changeSoldesYear = function(delta){ state.soldesYear += delta; renderCurrentPanel(); };
   window.saveQuota = async function(pepsId, typeId, year, val){
     const num = parseFloat(val) || 0;
     try{
